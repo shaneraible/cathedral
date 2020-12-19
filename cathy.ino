@@ -1,7 +1,7 @@
 #include "Arduino.h"
 #include <FastLED.h>
 
-typedef int (*State) ();
+typedef void (*State) ();
 
 #define DATA_PIN 3
 #define LED_TYPE WS2811
@@ -24,14 +24,16 @@ void explodeLED(CRGB col);
 void pittLighting();
 
 //states
-void state0();
-void state1();
-void state2();
-void state3();
-void state4();
-void state5();
-void state6();
-State states[] = { state2, state1, state2, state3, state4, state5, state6 };
+void turnOn();
+void offState();
+void pittColors1();
+void rainbowState();
+void twinkleState();
+void victoryState();
+void warmLightState();
+void rotateColors();
+State states[] = { offState, pittColors1, rainbowState, twinkleState, victoryState, warmLightState, rotateColors };
+
 
 static void nextState() {
   //debounce
@@ -45,7 +47,7 @@ static void nextState() {
 void setup() {
   state = 0;
   Serial.begin(9600);
-  delay(3000);
+  delay(500);
 
   //configure the leds
   FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
@@ -62,12 +64,9 @@ uint8_t gHue = 0; // rotating "base color" used by many of the patterns
 
 void loop() {
   states[state]();
-  // send the 'leds' array out to the actual LED strip
   FastLED.show();  
-  // insert a delay to keep the framerate modest
-  FastLED.delay(1);
   EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
-
+  EVERY_N_MILLISECONDS( 6000 ) { nextState(); }
 }
 
 void setRange(int x1, int x2, CRGB col){
@@ -76,58 +75,72 @@ void setRange(int x1, int x2, CRGB col){
   }
 }
 
-void explodeLED(CRGB col, unsigned int del, unsigned int s){
-  for(int i=NUM_LEDS/2, k=NUM_LEDS/2+(NUM_LEDS%2==0?1:0); (i<NUM_LEDS || k>=0) && s==state; i++, k--){
-    if(i<NUM_LEDS)
-      leds[i] = col;
-    if(k>=0)
-      leds[k] = col;
+void fadeRange(int srt, int nd, CRGB col, int t){
+  CRGB leds_start[NUM_LEDS];
+  for(int i=0; i<NUM_LEDS; i++) leds_start[i] = leds[i];
+  
+  for(int i=0; i<t; i++){
+    for(int l=srt; l<=nd; l++){
+      leds[l].r += ((double)col.r-leds_start[l].r)/(t);
+      leds[l].g += ((double)col.g-leds_start[l].g)/(t);
+      leds[l].b += ((double)col.b-leds_start[l].b)/(t);
+    }
     FastLED.show();
-    delay(del);
+    delay(1);
   }
 }
 
-void state0(){
+void fadeColorUp(CRGB col, int del){
+  fadeRange(0,3, col, del);
+  fadeRange(4,5, col, del);
+  fadeRange(6,7, col, del);
+  fadeRange(8,8, col, del);
+  fadeRange(9,9, col, del);
+}
+
+void offState(){
   FastLED.clear();
   FastLED.show();
   delay((state==0)*2000);
 }
-void state1(){
-  explodeLED(CRGB::Blue, 20, 1);
-  delay((state==1) * 2000);
-  explodeLED(CRGB::Yellow, 20, 1);
+
+void pittColors1(){
+  if(state==1) fadeColorUp(CRGB::Blue, 100);
+  delay((state==1) * 1000);
+  if(state==1) fadeColorUp(CRGB::Yellow, 100);
+  delay((state==1) * 1000);
 }
-void state2(){
-  // FastLED's built-in rainbow generator
+
+void rainbowState(){
+  // good as is
   fill_rainbow( leds, NUM_LEDS, gHue, 7);
 }
-void state3(){
+
+void twinkleState(){
   // random colored speckles that blink in and fade smoothly
   fadeToBlackBy( leds, NUM_LEDS, 10);
   int pos = random16(NUM_LEDS);
   leds[pos] += CHSV( gHue + random8(64), 200, 255);
+  delay(40);
 }
-void state4(){
-  // a colored dot sweeping back and forth, with fading trails
-  fadeToBlackBy( leds, NUM_LEDS, 20);
-  int pos = beatsin16( 13, 0, NUM_LEDS-1 );
-  leds[pos] += CHSV( gHue, 255, 192);
+
+void victoryState(){
+  FastLED.clear();
+  fill_solid(leds, NUM_LEDS, CRGB::Orange);
+  fadeToBlackBy( leds, NUM_LEDS, 230);
+  leds[9] = CRGB::Orange;
+  FastLED.show();
 }
-void state5(){
-  // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
-  uint8_t BeatsPerMinute = 62;
-  CRGBPalette16 palette = PartyColors_p;
-  uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
-  for( int i = 0; i < NUM_LEDS; i++) { //9948
-    leds[i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
-  }
+
+void warmLightState(){
+  fill_solid(leds, NUM_LEDS, CRGB::Orange);
+  FastLED.show();
 }
-void state6(){
-  // eight colored dots, weaving in and out of sync with each other
-  fadeToBlackBy( leds, NUM_LEDS, 20);
-  byte dothue = 0;
-  for( int i = 0; i < 8; i++) {
-    leds[beatsin16( i+7, 0, NUM_LEDS-1 )] |= CHSV(dothue, 200, 255);
-    dothue += 32;
+
+void rotateColors(){
+  int del = 100;
+  for(int i = 0; i<255&&state==6; i+=10){
+    fadeColorUp(CHSV(i, 255, 255), del);
+    delay((state==6)*200);
   }
 }
